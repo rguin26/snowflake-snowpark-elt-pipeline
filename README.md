@@ -8,7 +8,7 @@ This repository demonstrates a modern **Extract, Load, Transform (ELT)** data en
 
 ---
 
-## Pipeline Steps:
+## Pipeline Steps
 1. **Environment Setup:** Programmatically provision Snowflake databases, schemas (`RAW`, `ANALYTICS`), and compute resources.
 2. **Data Ingestion:** Simulate raw transactional ingestion into staging tables (`DE_SAMPLE_DB.RAW.RAW_ORDERS`).
 3. **Transformation:** Utilize Snowpark Python DataFrames to clean strings, parse dates, and filter out cancelled transactions directly in Snowflake's warehouse engine.
@@ -25,8 +25,22 @@ This repository demonstrates a modern **Extract, Load, Transform (ELT)** data en
 * **Notebook Platform:** Snowflake Notebooks / Jupyter Notebook
 
 ### Prerequisites:
-- A Snowflake account (or trial account) with `SYSADMIN` or equivalent privileges.
+- A Snowflake account (or trial account) with `SYSADMIN`, `ACCOUNTADMIN`, or equivalent privileges.
 - Python 3.8+ installed (if running locally outside Snowflake Notebooks).
 - `snowflake-snowpark-python` library installed.
 
 ---
+
+## 🚀 Quickstart Guide
+
+### Option A: Running directly in Snowflake Worksheets / Notebooks (Recommended)
+1. Log into your **Snowflake Snowsight UI**.
+2. Navigate to **Projects** > **Notebooks**.
+3. Create a new notebook, select **Python (Snowpark)** as the environment.
+4. Import `snowflake_snowpark_elt_pipeline.ipynb` and run the cells sequentially.
+
+### Option B: Running locally via Jupyter
+1. Clone the repository:
+   ```bash
+   git clone [https://github.com/](https://github.com/)<your-username>/snowflake-snowpark-elt-pipeline.git
+   cd snowflake-snowpark-elt-pipeline
