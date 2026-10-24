@@ -9,3 +9,14 @@ This repository demonstrates a modern **Extract, Load, Transform (ELT)** data en
 ---
 
 ## 🏗️ Architecture & Data Flow
+
++------------------+      +---------------------+      +------------------------+
+|  Raw Data Layer  | ---> | Transformation Layer | ---> |  Analytics Data Layer  |
+|  (JSON / CSV)    |      | (Snowpark DataFrames)|      | (Dim & Fact Models)    |
++------------------+      +---------------------+      +------------------------+
+|
+v
++----------------------+
+| Data Quality &       |
+| Validation Checks    |
++----------------------+
