@@ -8,15 +8,25 @@ This repository demonstrates a modern **Extract, Load, Transform (ELT)** data en
 
 ---
 
-## 🏗️ Architecture & Data Flow
+## Pipeline Steps:
+1. **Environment Setup:** Programmatically provision Snowflake databases, schemas (`RAW`, `ANALYTICS`), and compute resources.
+2. **Data Ingestion:** Simulate raw transactional ingestion into staging tables (`DE_SAMPLE_DB.RAW.RAW_ORDERS`).
+3. **Transformation:** Utilize Snowpark Python DataFrames to clean strings, parse dates, and filter out cancelled transactions directly in Snowflake's warehouse engine.
+4. **Dimensional Modeling:** Write transformed data into an analytical schema (`DE_SAMPLE_DB.ANALYTICS`) formatted into target tables (`dim_customers` and `fact_orders`).
+5. **Data Quality & Metrics:** Perform integrity checks and calculate summary statistics to ensure data readiness.
 
-+------------------+      +---------------------+      +------------------------+
-|  Raw Data Layer  | ---> | Transformation Layer | ---> |  Analytics Data Layer  |
-|  (JSON / CSV)    |      | (Snowpark DataFrames)|      | (Dim & Fact Models)    |
-+------------------+      +---------------------+      +------------------------+
-|
-v
-+----------------------+
-| Data Quality &       |
-| Validation Checks    |
-+----------------------+
+---
+
+## 🛠️ Tech Stack & Prerequisites
+
+* **Data Warehouse:** Snowflake
+* **Language:** Python 3.8+
+* **Framework:** Snowflake Snowpark API for Python
+* **Notebook Platform:** Snowflake Notebooks / Jupyter Notebook
+
+### Prerequisites:
+- A Snowflake account (or trial account) with `SYSADMIN` or equivalent privileges.
+- Python 3.8+ installed (if running locally outside Snowflake Notebooks).
+- `snowflake-snowpark-python` library installed.
+
+---
