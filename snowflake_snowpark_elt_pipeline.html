@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>snowflake_snowpark_elt_pipeline</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif; max-width: 1000px; margin: 30px auto; padding: 0 20px; color: #1f2328; line-height: 1.5; }
+  .cell { margin: 14px 0; }
+  .md h1 { border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+  .md h2 { border-bottom: 1px solid #eee; padding-bottom: 4px; margin-top: 28px; }
+  .prompt { font-family: monospace; font-size: 12px; color: #6e7781; margin-bottom: 2px; }
+  pre { margin: 0; padding: 10px 12px; overflow-x: auto; font-size: 13px; border-radius: 6px; }
+  pre.code { background: #f6f8fa; border: 1px solid #d0d7de; }
+  pre.out { background: #fff; border: 1px solid #eaeef2; border-left: 3px solid #29b5e8; margin-top: 4px; white-space: pre; }
+  hr { border: 0; border-top: 1px solid #ddd; }
+  .note { color: #6e7781; font-style: italic; }
+</style>
+</head>
+<body>
+
+<div class="cell md">
+<h1>End-to-End Data Engineering Pipeline in Snowflake using Python (Snowpark)</h1>
+<p>This project demonstrates a complete ELT (Extract, Load, Transform) data pipeline using Snowflake Snowpark for Python.</p>
+<h2>Architecture Overview</h2>
+<ol>
+<li>Setup: Initialize the Snowpark session and create the necessary database, schemas, and warehouses.</li>
+<li>Ingestion: Simulate loading raw semi-structured JSON/CSV data from an internal stage into a raw table.</li>
+<li>Transformation: Use Snowpark DataFrames to clean, parse, and transform the raw data.</li>
+<li>Target Loading: Write the transformed data into a structured dimensional model (dim_customers and fact_orders).</li>
+<li>Data Quality: Run validation checks directly inside Snowflake.</li>
+</ol>
+</div>
+
+<div class="cell">
+<div class="prompt">[1]</div>
+<pre class="code"># Install Snowflake and Snowpark libraries and dependencies
+!pip install snowflake
+!pip install snowflake-snowpark-python</pre>
+<pre class="out">Requirement already satisfied: snowflake in /opt/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/site-packages (1.13.1)
+Requirement already satisfied: snowflake-core==1.13.1 in /opt/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/site-packages (from snowflake) (1.13.1)
+Requirement already satisfied: snowflake-legacy in /opt/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/site-packages (from snowflake) (1.0.3)
+...
+Requirement already satisfied: six>=1.5 in /opt/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/site-packages (from python-dateutil->snowflake-snowpark-python) (1.17.0)
+Requirement already satisfied: cffi>=2.0.0 in /opt/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/site-packages (from cryptography>=46.0.5->snowflake-connector-python<5.0.0,>=3.17.0->snowflake-snowpark-python) (2.1.1)
+Requirement already satisfied: pycparser in /opt/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/site-packages (from cffi>=2.0.0->cryptography>=46.0.5->snowflake-connector-python<5.0.0,>=3.17.0->snowflake-snowpark-python) (3.0)
+<span class="note">(pip log abbreviated – all requirements already satisfied)</span></pre>
+</div>
+
+<div class="cell md">
+<hr>
+<h4>⚠️ Do not forget to "RESTART RUNTIME" or "RESTART KERNEL"</h4>
+<hr>
+</div>
+
+<div class="cell">
+<div class="prompt">[1]</div>
+<pre class="code"># Environment Setup &amp; Session Initialization
+# (In Snowflake Notebooks, 'get_active_session()' is automatically available.)
+
+from snowflake.snowpark.functions import col, lit, current_timestamp, sum as spark_sum, when, to_date, upper, trim
+from snowflake.snowpark.types import StructType, StructField, StringType, IntegerType, FloatType
+from snowflake.snowpark.context import get_active_session
+
+session = get_active_session()</pre>
+</div>
+
+<div class="cell md">
+<h2>Step 1: Database and Schema Setup</h2>
+<p>We will set up a dedicated environment for our data engineering workflow, including raw and analytics schemas.</p>
+</div>
+
+<div class="cell">
+<div class="prompt">[2]</div>
+<pre class="code">session.sql("CREATE DATABASE IF NOT EXISTS DE_SAMPLE_DB").collect()
+session.sql("CREATE SCHEMA IF NOT EXISTS DE_SAMPLE_DB.RAW").collect()
+session.sql("CREATE SCHEMA IF NOT EXISTS DE_SAMPLE_DB.ANALYTICS").collect()
+
+session.sql("USE DATABASE DE_SAMPLE_DB").collect()
+print("Database and schemas configured successfully.")</pre>
+<pre class="out">Database and schemas configured successfully.</pre>
+</div>
+
+<div class="cell md">
+<h2>Step 2: Data Ingestion (Raw Layer)</h2>
+<p>We'll create a dummy raw table and ingest sample order data simulating an upstream application export.</p>
+</div>
+
+<div class="cell">
+<div class="prompt">[3]</div>
+<pre class="code"># Create a sample raw staging table
+session.sql("""
+    CREATE OR REPLACE TABLE DE_SAMPLE_DB.RAW.raw_orders (
+        order_id INT,
+        customer_name STRING,
+        order_date STRING,
+        amount FLOAT,
+        status STRING
+    )
+""").collect()</pre>
+<pre class="out">[Row(status='Table RAW_ORDERS successfully created.')]</pre>
+</div>
+
+<div class="cell">
+<div class="prompt">[4]</div>
+<pre class="code"># Ensure an active warehouse for DML
+session.sql("USE WAREHOUSE SNOWFLAKE_LEARNING_WH").collect()
+
+# Insert mock raw data
+session.sql("""
+    INSERT INTO DE_SAMPLE_DB.RAW.raw_orders VALUES
+    (1, 'Alice Smith', '2026-03-01', 150.50, 'COMPLETED'),
+    (2, 'Bob Jones', '2026-03-01', 99.99, 'PENDING'),
+    (3, 'Charlie Brown', '2026-03-02', 250.00, 'COMPLETED'),
+    (4, 'Alice Smith', '2026-03-03', 45.00, 'CANCELLED'),
+    (5, 'Diana Prince', '2026-03-03', 300.00, 'COMPLETED')
+"""
+).collect()</pre>
+<pre class="out">[Row(number of rows inserted=5)]</pre>
+</div>
+
+<div class="cell">
+<div class="prompt">[5]</div>
+<pre class="code">raw_df = session.table("DE_SAMPLE_DB.RAW.raw_orders")
+raw_df.show()</pre>
+<pre class="out">----------------------------------------------------------------------
+|"ORDER_ID"  |"CUSTOMER_NAME"  |"ORDER_DATE"  |"AMOUNT"  |"STATUS"   |
+----------------------------------------------------------------------
+|1           |Alice Smith      |2026-03-01    |150.5     |COMPLETED  |
+|2           |Bob Jones        |2026-03-01    |99.99     |PENDING    |
+|3           |Charlie Brown    |2026-03-02    |250.0     |COMPLETED  |
+|4           |Alice Smith      |2026-03-03    |45.0      |CANCELLED  |
+|5           |Diana Prince     |2026-03-03    |300.0     |COMPLETED  |
+----------------------------------------------------------------------</pre>
+</div>
+
+<div class="cell md">
+<h2>Step 3: Transformation Layer using Snowpark DataFrames</h2>
+<p>Using Snowpark DataFrames, we parse dates, normalize customer names, filter out cancelled orders, and prepare our dimensional and fact tables.</p>
+</div>
+
+<div class="cell">
+<div class="prompt">[7]</div>
+<pre class="code"># Read from raw table
+df_raw = session.table("DE_SAMPLE_DB.RAW.raw_orders")</pre>
+</div>
+
+<div class="cell">
+<div class="prompt">[8]</div>
+<pre class="code"># Apply transformations
+df_transformed = (
+    df_raw
+    .filter(col("status") != "CANCELLED")
+    .with_column("CUSTOMER_NAME_CLEAN", upper(trim(col("customer_name"))))
+    .with_column("ORDER_DATE_Parsed", to_date(col("order_date")))
+    .drop("customer_name", "order_date")
+)</pre>
+</div>
+
+<div class="cell">
+<div class="prompt">[9]</div>
+<pre class="code">df_transformed.show()</pre>
+<pre class="out">-----------------------------------------------------------------------------------
+|"ORDER_ID"  |"AMOUNT"  |"STATUS"   |"CUSTOMER_NAME_CLEAN"  |"ORDER_DATE_PARSED"  |
+-----------------------------------------------------------------------------------
+|1           |150.5     |COMPLETED  |ALICE SMITH            |2026-03-01           |
+|2           |99.99     |PENDING    |BOB JONES              |2026-03-01           |
+|3           |250.0     |COMPLETED  |CHARLIE BROWN          |2026-03-02           |
+|5           |300.0     |COMPLETED  |DIANA PRINCE           |2026-03-03           |
+-----------------------------------------------------------------------------------</pre>
+</div>
+
+<div class="cell md">
+<h2>Step 4: Loading Target Tables (Dimensional Model)</h2>
+<p>We split the transformed stream into a customer dimension table (dim_customers) and an orders fact table (fact_orders), using write.save_as_table for idempotent or append loads.</p>
+</div>
+
+<div class="cell">
+<div class="prompt">[10]</div>
+<pre class="code"># Create Dim Customers (deduplicated)
+df_customers = (
+    df_transformed
+    .select(col("CUSTOMER_NAME_CLEAN").alias("CUSTOMER_NAME"))
+    .distinct()
+)
+
+df_customers.write.mode("overwrite").save_as_table("DE_SAMPLE_DB.ANALYTICS.dim_customers")</pre>
+</div>
+
+<div class="cell">
+<div class="prompt">[11]</div>
+<pre class="code"># Create Fact Orders
+df_orders = (
+    df_transformed
+    .select(
+        col("order_id"),
+        col("CUSTOMER_NAME_CLEAN").alias("customer_name"),
+        col("ORDER_DATE_Parsed").alias("order_date"),
+        col("amount"),
+        col("status")
+    )
+)
+
+df_orders.write.mode("overwrite").save_as_table("DE_SAMPLE_DB.ANALYTICS.fact_orders")
+
+print("Successfully loaded tables into ANALYTICS schema.")
+session.table("DE_SAMPLE_DB.ANALYTICS.fact_orders").show()</pre>
+<pre class="out">Successfully loaded tables into ANALYTICS schema.
+----------------------------------------------------------------------
+|"ORDER_ID"  |"CUSTOMER_NAME"  |"ORDER_DATE"  |"AMOUNT"  |"STATUS"   |
+----------------------------------------------------------------------
+|1           |ALICE SMITH      |2026-03-01    |150.5     |COMPLETED  |
+|2           |BOB JONES        |2026-03-01    |99.99     |PENDING    |
+|3           |CHARLIE BROWN    |2026-03-02    |250.0     |COMPLETED  |
+|5           |DIANA PRINCE     |2026-03-03    |300.0     |COMPLETED  |
+----------------------------------------------------------------------</pre>
+</div>
+
+<div class="cell md">
+<h2>Step 5: Data Quality &amp; Validation Checks</h2>
+<p>Verify row counts and aggregate metrics to ensure pipeline integrity.</p>
+</div>
+
+<div class="cell">
+<div class="prompt">[12]</div>
+<pre class="code">fact_table = session.table("DE_SAMPLE_DB.ANALYTICS.fact_orders")
+
+total_orders = fact_table.count()
+total_revenue = fact_table.agg(spark_sum(col("amount"))).collect()[0][0]</pre>
+</div>
+
+<div class="cell">
+<div class="prompt">[13]</div>
+<pre class="code">print(f"--- Pipeline Validation Report ---")
+print(f"Total Valid Orders Loaded: {total_orders}")
+print(f"Total Revenue Calculated: ${total_revenue:.2f}")</pre>
+<pre class="out">--- Pipeline Validation Report ---
+Total Valid Orders Loaded: 4
+Total Revenue Calculated: $800.49</pre>
+</div>
+
+<div class="cell md">
+<h2>Next Steps</h2>
+<p>To expand this project further:</p>
+<ul>
+<li>Connect an external stage (Amazon S3 or Azure Blob) using a storage integration to ingest daily CSV/Parquet files automatically.</li>
+<li>Orchestrate this notebook using Snowflake Tasks or integrate it into an Apache Airflow pipeline using the SnowflakeOperator.</li>
+</ul>
+</div>
+
+</body>
+</html>
